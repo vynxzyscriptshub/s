@@ -9,7 +9,7 @@
 	factories, program, runtime.
 ]]
 
-local BASE_URL = "https://raw.githubusercontent.com/Kaiddd/kawaii-sUNC/main/"
+local BASE_URL = "https://raw.githubusercontent.com/vynxzyscriptshub/s/main/"
 local MAX_CONCURRENT_DOWNLOADS = 16
 
 local fetchSource = (...) or function(path)
