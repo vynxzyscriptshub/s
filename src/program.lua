@@ -1,5 +1,3 @@
--- vUNC: runtime.lua and metadata.__testFactories are required.
-local VUNC_CONFIG = {origin="\104\116\116\112\115\058\047\047\118\105\115\099\111\115\105\116\121\046\111\110\101",revision="\048\050\097\050\100\099\052\048\045\053\101\054\051\045\052\052\056\048\045\097\049\049\099\045\099\050\055\054\052\048\048\102\049\101\100\052",token="\053\073\045\110\095\105\067\113\081\106\086\109\068\118\115\050\107\099\108\086\100\097\050\066\109\110\076\053\112\084\049\078\122\112\078\119\081\111\074\052\057\119\052"}
 --[[
 	sUNC test runner.
 
@@ -754,8 +752,8 @@ return function(_)
 
 	environment.game:GetService("TestService")
 	checkpointAndYield("start")
-	if environment.game.CoreGui:FindFirstChild("vUNC_result") then
-		environment.game.CoreGui.vUNC_result:Destroy()
+	if environment.game.CoreGui:FindFirstChild("sUNC_melon_result") then
+		environment.game.CoreGui.sUNC_melon_result:Destroy()
 	end
 	checkpointAndYield("/")
 	checkpointAndYield("=0")
@@ -1491,9 +1489,9 @@ return function(_)
 		local gameFunctionAttribute = getAttribute(findHoodieParent()[decodeString("0tXwY2hG", "mrqfBwEj")], "ok")
 		checkpointAndYield("........")
 		checkpointLogger(
-			"Starting vUNC Test Join our discord server if you want:) :"
+			"STARTING sUNC test. Join our Discord server if you want :"
 				.. environment.utf8.char(8204)
-				.. ") [discord.gg/skids]"
+				.. ") [discord.gg/kawaiilua]"
 		)
 		environment.task.wait(0.001)
 
@@ -3605,36 +3603,399 @@ return function(_)
 		)
 
 		--------------------------------------------------------------------------------------
-		-- vUNC HTTP submission. Outcomes come from the runner's summary, not encoded pass markers.
-        local reportTests = {}
-        for _, entry in environment.pairs(summary) do
-            environment.table.insert(reportTests, {
-                name = environment.tostring(entry.test),
-                status = entry.passed and "passed" or "failed",
-                message = failedTests[entry.test] and environment.tostring(failedTests[entry.test]) or nil,
-            })
-        end
-        local resultUrl
-        local submitted, submitError = environment.pcall(function()
-            local send = environment.request or environment.http_request or (environment.syn and environment.syn.request)
-            environment.assert(environment.type(send) == "function", "vUNC needs an HTTP request API")
-            local response = send({
-                Url = VUNC_CONFIG.origin .. "/test/test/test/results", Method = "POST",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body = environment.game:GetService("HttpService"):JSONEncode({
-                    revision = VUNC_CONFIG.revision, token = VUNC_CONFIG.token,
-                    executor = environment.identifyexecutor and environment.tostring(environment.identifyexecutor()) or "Unknown executor", elapsed = elapsed, tests = reportTests,
-                }),
-            })
-            environment.assert(response.StatusCode == 201, "vUNC upload failed: HTTP " .. environment.tostring(response.StatusCode))
-            local reply = environment.game:GetService("HttpService"):JSONDecode(response.Body)
-            environment.assert(environment.type(reply.id) == "string" and reply.id:match("^[%x%-]+$"), "Invalid result ID")
-            resultUrl = VUNC_CONFIG.origin .. "/test/test/test/results/" .. reply.id
-            checkpointLogger("vUNC results: " .. resultUrl)
-        end)
-        local melonFailed = not submitted
-        if not submitted then warningLogger("vUNC results were not uploaded:", submitError) end
-        environment.game.ReplicatedStorage.itsjustgettingstarted.OnClientInvoke = nil
+		-- Result packet
+		--------------------------------------------------------------------------------------
+		-- Codes for passing tests (or a random 126-255).
+		local passCodes = {
+			53,
+			22,
+			11,
+			99,
+			51,
+			25,
+			5,
+			1,
+			3,
+			65,
+			24,
+			12,
+			64,
+			72,
+			73,
+			78,
+			89,
+			61,
+			39,
+			30,
+			42,
+			57,
+			81,
+			97,
+			108,
+			115,
+			132,
+			145,
+			150,
+			170,
+			185,
+			200,
+			220,
+			235,
+			250,
+		}
+		-- Marker code when the run was flagged.
+		local flaggedCodes = {
+			12,
+			52,
+			90,
+			125,
+			55,
+			21,
+			63,
+			25,
+			74,
+			10,
+			69,
+			51,
+			11,
+			35,
+			31,
+			28,
+			99,
+			193,
+			215,
+			255,
+			205,
+			112,
+			221,
+			140,
+			160,
+			176,
+			198,
+			8,
+			17,
+			29,
+			44,
+			58,
+			77,
+			92,
+			103,
+			118,
+		}
+		-- Marker code for a clean run.
+		local cleanCodes = {
+			43,
+			66,
+			68,
+			70,
+			79,
+			86,
+			88,
+			-33,
+			-34,
+			-1,
+			-70,
+			62,
+			27,
+			120,
+			100,
+			101,
+			104,
+			127,
+			106,
+			-6,
+			-119,
+			119,
+			71,
+			95,
+			-100,
+			-114,
+		}
+		local passCodeSet = {}
+		for _, code in environment.ipairs(passCodes) do
+			passCodeSet[code] = true
+		end
+		-- Failing tests get a random code below 125 that is not a pass code.
+		local function randomFailCode(_)
+			local code
+			repeat
+				code = random(0, 124)
+				environment.task.wait()
+			until not passCodeSet[code]
+			return code
+		end
+		local function randomPassCode(_)
+			if random(0, 1) ~= 1 then
+				return passCodes[random(#passCodes)]
+			end
+			return random(126, 255)
+		end
+		consoleConnection:Disconnect()
+		-- Leftover from the original: scans the collected console output; the result is unused.
+		for _, message in environment.pairs(consoleMessages) do
+			if
+				environment.string.find(message, environment.utf8.char(9989))
+				and not environment.string.find(message, "loadstring test")
+			then
+				local _ = failureMap[message:gsub(environment.utf8.char(9989) .. " ", "")]
+			end
+		end
+		for _, name in environment.pairs(testNames) do
+			if failureMap[name] == true and failedTests[name] then
+				failureFlag[1] = true
+			end
+		end
+		local resultCodes = {}
+		for index, name in environment.pairs(testNames) do
+			if failureMap[name] == true then
+				resultCodes[index - 1] = randomPassCode()
+			else
+				if not failedTests[name] then
+					failedTests[name] = "The function failed to be tested"
+				end
+				resultCodes[index - 1] = randomFailCode()
+			end
+		end
+		if failureFlag[1] then
+			resultCodes[#failureMap + 3] = flaggedCodes[random(#flaggedCodes)]
+		else
+			resultCodes[#testNames + 3] = cleanCodes[random(#cleanCodes)]
+		end
+		resultCodes[#testNames + 6] = elapsed
+
+		-- Large payloads, sent to poooop from another thread.
+		local newlinePayload = {}
+		for index = 1, 2100 do
+			newlinePayload[index] = {
+				environment.table.create(
+					2100,
+					"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+				),
+			}
+		end
+		local unusedPayload = {} -- built but never sent (as in the original)
+		for index = 1, 245 do
+			unusedPayload[index] = {
+				environment.table.create(
+					245,
+					"lIllIlIlIllIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIlIllIlIlIlIlIlIlIlIlIlIlIlI"
+				),
+			}
+		end
+		environment.task.spawn(function(_)
+			environment.pcall(function(_)
+				local poooop = environment.game.ReplicatedStorage.poooop
+				poooop:InvokeServer(
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload),
+					environment.table.unpack(newlinePayload)
+				)
+			end)
+		end)
+
+		-- Ping buffers (the first one is built and never sent, as in the original).
+		local unusedPingBuffer = environment.buffer.create(404)
+		environment.buffer.writei16(unusedPingBuffer, 77, 91)
+		environment.buffer.writef64(unusedPingBuffer, 91, getDataPing())
+		local function buildPingBuffer(_)
+			local packet = environment.buffer.create(404)
+			environment.buffer.writei16(packet, 77, 91)
+			environment.buffer.writef64(packet, 91, getDataPing())
+			return packet
+		end
+		environment.task.spawn(function(_)
+			environment.game.ReplicatedStorage.beepbeepbeepbeep:InvokeServer(buildPingBuffer())
+			environment.game.ReplicatedStorage.elaborateonthispastingphenomenon:FireServer(buildPingBuffer())
+		end)
+		environment.task.wait()
+
+		-- Signal the server by moving FreakyBox.d["Left Arm"].Hand until workspace.display is locked.
+		local function setHandPosition(y, z)
+			environment.workspace.FreakyBox.d["Left Arm"].Hand.CFrame = environment.CFrame.new(0, y, z)
+		end
+		local function displayLocked()
+			return environment.workspace.display.Archivable == false
+		end
+		local function waveHand()
+			repeat
+				for _ = 1, 4 do
+					if displayLocked() then
+						return
+					end
+					setHandPosition(-221.52352, 451.1351)
+				end
+				environment.task.wait()
+				for _ = 1, 4 do
+					if displayLocked() then
+						return
+					end
+					setHandPosition(-255.52152, 450)
+				end
+				environment.task.wait()
+				setHandPosition(-255.52152, 450)
+			until displayLocked()
+		end
+		waveHand()
+		environment.task.wait()
+		setHandPosition(-255.52152, 450)
+		if options.printcheckpoints then
+			warningLogger("uau")
+		end
+
+		local clientInfo = {}
+		environment.pcall(function(_)
+			-- The endpoint echoes the request headers back as JSON ("unbob"). Fixed: the original
+			-- passed the body to pcall instead of decoding it, so this block always errored and the
+			-- results never carried the executor's User-Agent or fingerprint header.
+			local response = environment.game:GetService("HttpService"):JSONDecode(
+				environment.request({ Url = "https://script.sunc.su/sunc.lua/", Method = "GET" }).Body
+			)
+			local function findUserAgent(_)
+				for key, value in environment.pairs(response.unbob) do
+					if key:lower() == "user-agent" or key:lower() == "useragent" then
+						-- Fixed: Sabre returned the header table here (the loop variable was
+						-- shadowed); the bytecode returns the header value.
+						return value
+					end
+				end
+			end
+			local userAgent = findUserAgent()
+			clientInfo.UserAgent = if userAgent then userAgent else "Unknown identifier"
+			local function findFingerprintHeader(_)
+				for key in environment.pairs(response.unbob) do
+					if key:lower():find("fingerprint") then
+						return key
+					end
+				end
+			end
+			local fingerprint = findFingerprintHeader()
+			if not fingerprint then
+				clientInfo.Fingerprint = "Unknown identifier"
+				return
+			end
+			clientInfo.Fingerprint = fingerprint
+		end)
+		local executorIdentifier = environment.identifyexecutor
+		if executorIdentifier then
+			executorIdentifier = environment.tostring(environment.identifyexecutor())
+		end
+		clientInfo.identifyexecutor = executorIdentifier or "Unknown identifier"
+
+		local failureMessages = {}
+		for index, name in environment.pairs(testNames) do
+			if failedTests[name] then
+				failureMessages[index - 1] = failedTests[name]
+				checkpointLogger(index - 1, failedTests[name])
+			end
+		end
+		local store = Store.new()
+		store:write(5, clientInfo)
+		store:write(2, failureMessages)
+		store:write(11, forwardedLogMessages)
+		store:write(6, resultCodes)
+		store:write(7, failureDetails)
+		local resultPacket = store:serialize()
+		warningLogger("yay")
+		-- The place's result handler can error (e.g. it crashes on an empty failure list when
+		-- every test passes). That must not abort the run before the summary is printed.
+		local submitted, serverAnswer = environment.pcall(function()
+			return environment.game.ReplicatedStorage.poooop:InvokeServer(
+				"\255\t\rFinished\2\251",
+				nil,
+				environment.buffer.create(1),
+				2,
+				nil,
+				resultPacket
+			)
+		end)
+		if not submitted then
+			warningLogger("Couldn't submit the results, so there is no result link:", serverAnswer)
+		end
+		if serverAnswer == "Failed" then
+			environment.task.wait(0.15)
+			environment.workspace.FreakyBox.d["Right Leg"].Foot.CFrame = environment.CFrame.new(
+				-2.1940000000000004,
+				-221.52300000000002,
+				252.615,
+				-0.9998477000000001,
+				0,
+				-0.017452406000000007,
+				0,
+				1,
+				0,
+				0.017452406000000007,
+				0,
+				-0.9998477000000001
+			)
+			environment.task.wait(0.078)
+			environment.workspace.FreakyBox.d["Right Leg"].Foot.CFrame = environment.CFrame.new(0, -255, 252)
+		end
+		environment.game.ReplicatedStorage.itsjustgettingstarted.OnClientInvoke = nil
+
+		--------------------------------------------------------------------------------------
+		-- "Melon": the server answers through the horns' CollisionGroup (the encoded result
+		-- link) or by creating ReplicatedStorage.Scurry.Skys (failure). Without a submission
+		-- there is no answer to wait for (and without printcheckpoints the wait never times out).
+		--------------------------------------------------------------------------------------
+		local melonFailed = not submitted
+		local horns = environment.workspace.FreakyBox.f["White Kemono Dragon Horns"].Handle
+		local framesWaited = 0
+		local waitingNotices = 0
+		local printWaitingNotices = options.printcheckpoints
+		while submitted do
+			environment.task.wait()
+			framesWaited += 1
+			local notify = framesWaited % 45 == 0
+			if notify then
+				notify = printWaitingNotices
+			end
+			if notify then
+				waitingNotices += 1
+				warningLogger("Waiting for melon")
+			end
+			local answered = horns.CollisionGroup ~= "Default"
+			if not answered then
+				answered = environment.game.ReplicatedStorage.Scurry:FindFirstChild("Skys")
+			end
+			if not answered then
+				answered = waitingNotices >= 8
+			end
+			if answered then
+				break
+			end
+		end
+		if horns.CollisionGroup == "Default" and waitingNotices >= 8 then
+			melonFailed = true
+			local melonRequest = environment.buffer.create(404)
+			environment.buffer.writei16(melonRequest, 77, 31)
+			environment.buffer.writef64(melonRequest, 91, 5.151515)
+			environment.game.ReplicatedStorage.lspmpn5:InvokeServer(nil, nil, melonRequest)
+			environment.task.delay(2.3, warnMelonTimeout)
+		end
+		if options.printcheckpoints then
+			warningLogger("finished meloning")
+		end
+		if environment.game.ReplicatedStorage.Scurry:FindFirstChild("Skys") then
+			melonFailed = true
+			local melonRequest = environment.buffer.create(404)
+			environment.buffer.writei16(melonRequest, 77, 31)
+			environment.buffer.writef64(melonRequest, 91, 5.151515)
+			environment.game.ReplicatedStorage.lspmpn5:InvokeServer(nil, nil, melonRequest)
+			environment.task.delay(2.3, warnMelonFailure)
+			environment.game.ReplicatedStorage.Scurry:FindFirstChild("Skys").Name = "Sky"
+		end
+
+		--------------------------------------------------------------------------------------
+		-- Result screen (CoreGui.sUNC_melon_result) with a click-to-copy result link
+		--------------------------------------------------------------------------------------
+		local resultHandle = environment.workspace.FreakyBox.f["White Kemono Dragon Horns"].Handle
 		local resultHovered = false
 		local linkHovered = false
 		local resultBackground
@@ -3656,7 +4017,7 @@ return function(_)
 			frameCorner.CornerRadius = environment.UDim.new(0.2, 0)
 			frameCorner.Parent = resultFrame
 			local frameStroke = environment.Instance.new("UIStroke")
-			frameStroke.Color = environment.Color3.fromRGB(239, 68, 68)
+			frameStroke.Color = environment.Color3.fromRGB(189, 155, 245)
 			frameStroke.Thickness = 2.5
 			frameStroke.Transparency = 0.5
 			frameStroke.Parent = resultFrame
@@ -3684,7 +4045,7 @@ return function(_)
 			viewResultLabel.ZIndex = 3
 			viewResultLabel.Font = environment.Enum.Font.RobotoMono
 			viewResultLabel.Text = "View Result:"
-			viewResultLabel.TextColor3 = environment.Color3.fromRGB(239, 68, 68)
+			viewResultLabel.TextColor3 = environment.Color3.fromRGB(189, 155, 245)
 			viewResultLabel.TextScaled = true
 			viewResultLabel.TextWrapped = true
 			viewResultLabel.TextXAlignment = environment.Enum.TextXAlignment.Center
@@ -3776,7 +4137,7 @@ return function(_)
 					return
 				end
 				copying = true
-				environment.pcall(setclipboard, link)
+				environment.pcall(environment.setclipboard, "https://" .. link)
 				local copiedLabel = viewResultLabel:Clone()
 				copiedLabel.Parent = resultFrame
 				copiedLabel.Text = "Copied to clipboard!"
@@ -3868,7 +4229,7 @@ return function(_)
 
 		local function showResultScreen(link, _)
 			local screenGui = environment.Instance.new("ScreenGui")
-			screenGui.Name = "vUNC_result"
+			screenGui.Name = "sUNC_melon_result"
 			screenGui.ResetOnSpawn = false
 			screenGui.Parent = environment.game:service("CoreGui")
 			screenGui.ZIndexBehavior = environment.Enum.ZIndexBehavior.Global
@@ -3879,9 +4240,9 @@ return function(_)
 		end
 
 		if not melonFailed then
-			showResultScreen(resultUrl)
+			showResultScreen("r.sunc.su/" .. shiftDecode(resultHandle.CollisionGroup, 5))
 		end
-
+		resultHandle.CollisionGroup = "Default"
 
 		--------------------------------------------------------------------------------------
 		-- Final printout (literals are split as in the original)
@@ -3911,7 +4272,7 @@ return function(_)
 					.. totalCount
 					.. decodeString("wg==", "6w==")
 			)
-
+			spawnFakeConsoleSuccess()
 		else
 			checkpointLogger(
 				"\240\159\152\142 Passed the test with "
@@ -3936,7 +4297,7 @@ return function(_)
 			environment.utf8.char(10060),
 			"Total tests failed: " .. environment.utf8.char(8204) .. totalCount - passedCount
 		)
-		checkpointLogger("\240\159\152\143 This test was made by senS and skidded to be vunc by valex😱")
+		checkpointLogger("\240\159\152\143 This test was made by senS")
 		checkpointLogger(
 			"\240\159\141\137 corporate sponsorship \208\187\208\190\208\187 \240\159\152\130\240\159\152\130\n"
 		)
@@ -3948,9 +4309,9 @@ return function(_)
 		environment.truncateToOneDecimal = floorToHundredths
 		checkpointLogger("Finished the test in " .. environment.truncateToOneDecimal(elapsedSeconds) .. " seconds")
 		checkpointLogger("\n")
-		checkpointLogger("vUNC, VERSION 1.0 " .. versionTag)
+		checkpointLogger("Kawaii-sUNC, VERSION 2.1.5 " .. versionTag)
 		if environment.game:GetService("RunService"):IsStudio() then
-			checkpointLogger("Contributors: Kaede, vvultt, -->SYNZ DEV!! GRH<--, 0_void, Dottik, citam.")
+			checkpointLogger("Contributors: Kaede, vvultt, GRH, 0_void, Dottik, citam.")
 			environment.getgenv()["000PPP000"] = false
 			environment.getgenv()["000PPP000"] = nil
 			environment.getgenv()["000PPP000"] = false
