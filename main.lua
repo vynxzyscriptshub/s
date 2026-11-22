@@ -1,20 +1,26 @@
 --[[
-	Kawaii-sUNC entry point:
-
-		loadstring(game:HttpGet("https://raw.githubusercontent.com/Kaiddd/kawaii-sUNC/main/main.lua"))()
-
-	An alternative `fetchSource(path) -> source` function may be passed as the first argument
-	(e.g. for offline runs); by default modules are fetched from the GitHub repository.
-	All modules are downloaded concurrently, then compiled in a fixed order: metadata, the test
-	factories, program, runtime.
+    vUNC entry point. Upload this main.lua beside your src folder, then run /vunc/script.
+    Modules are read from the uploaded executor workspace files. There is no network fallback.
+    An explicit fetchSource(path) callback may still be passed as the first argument.
 ]]
 
-local BASE_URL = "https://raw.githubusercontent.com/vynxzyscriptshub/s/main/"
 local MAX_CONCURRENT_DOWNLOADS = 16
-
-local fetchSource = (...) or function(path)
-	return game:HttpGet(BASE_URL .. path)
+local fetchSource = (...)
+if fetchSource == nil then
+    fetchSource = function(path)
+        assert(type(readfile) == "function", "vUNC requires readfile to load uploaded modules")
+        if type(isfile) == "function" and not isfile(path) then
+            error("vUNC missing uploaded module: " .. path, 0)
+        end
+        local ok, source = pcall(readfile, path)
+        if not ok then
+            error("vUNC could not read uploaded module " .. path .. ": " .. tostring(source), 0)
+        end
+        assert(type(source) == "string" and #source > 0, "vUNC uploaded module is empty or unreadable: " .. path)
+        return source
+    end
 end
+assert(type(fetchSource) == "function", "vUNC fetchSource argument must be a function")
 
 -- Test modules, in the order the program runs them.
 local TEST_NAMES = {
@@ -108,7 +114,7 @@ end
 table.insert(modulePaths, "src/program.lua")
 table.insert(modulePaths, "src/runtime.lua")
 
--- Download every module up front; one request at a time took most of the start-up time.
+-- Read every module up front; keep the existing bounded workers and compilation order.
 local downloads = {} -- path -> { ok, sourceOrError }
 local nextDownload = 1
 local workerCount = math.min(MAX_CONCURRENT_DOWNLOADS, #modulePaths)
