@@ -4,23 +4,11 @@
     An explicit fetchSource(path) callback may still be passed as the first argument.
 ]]
 
+local BASE_URL = "https://raw.githubusercontent.com/vynxzyscriptshub/s/main/"
 local MAX_CONCURRENT_DOWNLOADS = 16
-local fetchSource = (...)
-if fetchSource == nil then
-    fetchSource = function(path)
-        assert(type(readfile) == "function", "vUNC requires readfile to load uploaded modules")
-        if type(isfile) == "function" and not isfile(path) then
-            error("vUNC missing uploaded module: " .. path, 0)
-        end
-        local ok, source = pcall(readfile, path)
-        if not ok then
-            error("vUNC could not read uploaded module " .. path .. ": " .. tostring(source), 0)
-        end
-        assert(type(source) == "string" and #source > 0, "vUNC uploaded module is empty or unreadable: " .. path)
-        return source
-    end
-end
-assert(type(fetchSource) == "function", "vUNC fetchSource argument must be a function")
+
+local fetchSource = (...) or function(path)
+	return game:HttpGet(BASE_URL .. path)
 
 -- Test modules, in the order the program runs them.
 local TEST_NAMES = {
